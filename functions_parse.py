@@ -15,6 +15,12 @@ def general_parse(dataframe, file_instance):
 
     logging.info(f"Parsing file: {file_instance.name}")
 
+    file = file_instance.path
+    csv_true = file_instance.csv_true
+    name = file_instance.name
+    nickname = file_instance.nickname
+    file_type = file_instance.fileType
+
     df = pd.DataFrame()
 
     try:
@@ -60,6 +66,17 @@ def general_parse(dataframe, file_instance):
 
 
 
+        if file_type == 'csv':
+            # Filter for CompletionDate >= 6 months ago
+            now = datetime.now()
+            cutoff_date = now - timedelta(days= 200)
+            logging.info(f"Cutoff date = {cutoff_date}")
+
+            df = df.loc[df['CompletionDate'] >= cutoff_date]
+            
+            # Reset index
+            df = df.reset_index(drop=True)
+
         # Log Number of Rows in DataFrame
         dfLength = str(len(df.index))
         logging.debug("Number of rows in DataFrame: " + dfLength)
@@ -92,6 +109,7 @@ def dfs_merge(df_left, df_right):
 
 # Final df parse - required static values
 def final_parse(dataframe):
+    logging.info("Performing final_parse()")
 
     df = pd.DataFrame()
 
@@ -123,10 +141,10 @@ def final_parse(dataframe):
         df['Slotend_Date'] = None
         df['EmpID'] = dataframe['EmpID']
 
-        logging.info("SUCCESS: final_parse()")
+        logging.info("SUCCESS: final_parse()\n")
 
     except Exception as e:
         logging.critical(f"Error occurred: {e}")
-        logging.critical("FAIL: final_parse()")
+        logging.critical("FAIL: final_parse()\n")
     
     return df

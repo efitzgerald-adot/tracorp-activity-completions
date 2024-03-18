@@ -21,7 +21,7 @@ def connect_sql_server(server_instance):
     database = server_instance.database
     user = server_instance.user
 
-    logging.info(f"Connecting to SQL Server: {server}...")
+    logging.info("Connecting to SQL Server...")
     logging.debug("SQL Server Driver: " + driver)
     logging.debug("SQL Server Server: " + server)
     logging.debug("SQL Server Database: " + database)
@@ -29,16 +29,17 @@ def connect_sql_server(server_instance):
     logging.debug("Current User: " + os.getlogin())
     logging.info("Current User: " + os.getlogin())
 
+
     try:
         conn = pyodbc.connect('DRIVER='+driver+';SERVER='+server+';DATABASE=' +
-                            database+';UID='+user+';Trusted_Connection=yes;TrustServerCertificate=yes')
+                              database+';UID='+user+';Trusted_Connection=yes;TrustServerCertificate=yes')
         cursor = conn.cursor()
 
-        logging.info(f"SUCCESS: connect_sql_server({ server_instance.server })")
+        logging.info(f"SUCCESS: connect_sql_server({ server_instance.server })n")
 
     except Exception as e:
         logging.critical(e)
-        logging.critical(f"FAIL: connect_sql_servers({ server_instance.server })")
+        logging.critical(f"FAIL: connect_sql_servers({ server_instance.server })\n")
 
     return conn, cursor
 
@@ -50,6 +51,7 @@ def insert_query(conn, dataframe, table):
 
     tableName = table.name
     tablePath = table.path
+    tableType = table.table_type
 
     logging.info(f"Inserting df into table: {tablePath}")
 
@@ -69,8 +71,9 @@ def insert_query(conn, dataframe, table):
         cursor = conn.cursor()
 
         # Truncate the table
-        cursor.execute(f"TRUNCATE TABLE {tablePath};")
-        conn.commit()
+        if tableType == 'tmp':
+            cursor.execute(f"TRUNCATE TABLE {tablePath};")
+            conn.commit()
 
         # Iterate over rows in the DataFrame
         for index, row in dataframe.iterrows():
@@ -101,12 +104,12 @@ def insert_query(conn, dataframe, table):
         # Close the cursor and connection
         cursor.close()
 
-        logging.info(f"SUCCESS: insert_query({tablePath})")
+        logging.info(f"SUCCESS: insert_query({tablePath}) \n")
 
     except Exception as e:
         logging.critical(f"Error occurred: {e}")
         conn.rollback()  # Roll back changes if an error occurs
-        logging.critical(f"FAIL: insert_query({tableName})")
+        logging.critical(f"FAIL: insert_query({tableName}) \n")
 
 
 
@@ -142,39 +145,60 @@ def correct_email(conn):
 
 
         cursor.close()
-        logging.info("SUCCESS: correct_email()")
+        logging.info("SUCCESS: correct_email()\n")
 
 
     except Exception as e:
         logging.critical("FAIL: correct_email()")
-        logging.critical(f"Error occurred: {e}")
+        logging.critical(f"Error occurred: {e}\n")
         conn.rollback()  # Roll back changes if an error occurs
 
 
-# Remove duplicates
-def remove_duplicates(conn):
+# General remove duplicates
+def general_distinct_query(conn, table_left, table_right):
 
-    logging.info("Removing duplicates from tracorp [eric].[dbo].[tmp_Tracorp_Daily]")
+    tableLeft_name = table_left.name
+    tableLeft_database = table_left.path
+    tableLeft_path = table_left.path
+    tableLeft_type = table_left.table_type
+    tableLeft_email = table_left.key_email
+    tableLeft_activity = table_left.key_activity
+    tableLeft_date = table_left.key_date
+
+    tableRight_name = table_right.name
+    tableRight_database = table_right.database
+    tableRight_path= table_right.path
+    tableRight_type = table_right.table_type
+    tableRight_email = table_right.key_email
+    tableRight_activity = table_right.key_activity
+    tableRight_date = table_right.key_date
+
+    logging.info(f"Removing duplicates from {tableLeft_path}")
+
+    df = pd.DataFrame()
+
+    print(tableLeft_path)
+    print(tableRight_path)
 
     try:
-        query = """ 
+        query = f""" 
         SELECT 
-            tc.ActivityCode,
-            tc.Email_adotmaster AS Email,
-            tc.EmpID,
-            tc.CompletionDate,
-            tc.Score
+            l.{tableLeft_activity},
+            l.{tableLeft_email} AS Email,
+            l.EmpID,
+            l.{tableLeft_date},
+            l.Score
         FROM 
-            [eric].[dbo].[tmp_Tracorp_Daily] AS tc
+            {tableLeft_path} AS l
         LEFT JOIN 
-            [eric].[dbo].[tmp_Successful_Tracorp_Completions_xlsx] AS comp 
+            {tableRight_path} AS r 
         ON 
-            tc.ActivityCode = comp.ActivityCode
-            AND tc.Email_adotmaster = comp.Email
-            AND tc.CompletionDate = comp.CompletionDate
+            l.{tableLeft_activity} = r.{tableRight_activity}
+            AND l.{tableLeft_email} = r.{tableRight_email}
+            AND l.{tableLeft_date} = r.{tableRight_date}
         WHERE 
-            comp.ActivityCode IS NULL
-            AND tc.Email_adotmaster IS NOT NULL;
+            r.{tableRight_activity} IS NULL
+            AND l.{tableLeft_email} IS NOT NULL;
         """
 
         df = pd.read_sql(query, conn)
@@ -182,15 +206,16 @@ def remove_duplicates(conn):
 
         df = df.loc[df['Email'] != "BLANK"]
 
-        dfLength = str(len(df.index))
-        
-        logging.info("SUCCESS: remove_duplicates()")
-        logging.info(f"df_tracorp_final contains: {dfLength} rows!")
 
+        # Print length of new df
+
+        
+
+        logging.info(f"SUCCESS: general_distinct_query({tableLeft_path}) \n")
 
     except Exception as e:
-        logging.critical("FAIL: remove_duplicates()")
-        logging.critical(f"Error occurred: {e}")
+        logging.critical(f"FAIL: general_distinct_query({tableLeft_path})")
+        logging.critical(f"Error occurred: {e} \n")
         conn.rollback()  # Roll back changes if an error occurs
 
     return df

@@ -10,29 +10,38 @@ import variables
 
 
 
-# Download file from SFTP
-def download_file(host_url, host_username, file_path, key_path, temp_path):
-    logging.info("Downloading file from TraCorp SFTP...")
-    logging.debug("SFTP URL: " + host_url)
-    logging.debug("SFTP Username: " + host_username)
-    logging.debug("SFTP File Path: " + file_path)
-    logging.debug("SFTP Key Path: " + key_path)
+
+# Import files
+def import_files(file_instance):
+
+    df = pd.DataFrame()
+
+    file = file_instance.path
+    csv_true = file_instance.csv_true
+    name = file_instance.name
+    nickname = file_instance.nickname
+    file_type = file_instance.fileType
+
+    logging.info(f"Importing file: {name}")
+    logging.debug(f"File path: " + file)
 
     try:
-        cnopts = pysftp.CnOpts()
-        cnopts.hostkeys = None
-        with pysftp.Connection(host=host_url, username=host_username, private_key=key_path, cnopts=cnopts) as sftp:
-            sftp.get(file_path)
-            sftp.close()
+        if file_type == 'csv':
+            read_file = pd.read_csv(file)
+
+        else:
+            read_file = pd.read_excel(file, index_col=None)
+        
+        df = pd.DataFrame(read_file)
+
+        logging.info(f"SUCCESS: import_files({name})")
+
     except Exception as e:
-        logging.critical("Error downloading file from SFTP")
-        logging.critical(e)
-    else:
-        file_name = os.path.basename(file_path)
-        file = os.path.join(temp_path, file_name)
-        logging.info("File downloaded successfully.")
-        logging.debug("File path: " + file)
-        return file
+        logging.critical(f"Error occurred: {e}")
+        logging.critical(f"FAIL: import_files({name})")
+        logging.critical(f"{name}.csv_true = {csv_true}\n")
+
+    return df
 
 
 # Export csv
@@ -46,26 +55,14 @@ def export_csv(dataframe, file_instance):
     logging.info(f"Exporting file: {filePath}")
     logging.debug("File path: " + filePath)
 
-    # Save copy of modified file for debugging
-    # Remove File Extention
-    extention = os.path.splitext(file)[1]
-    logging.debug("File extention: " + extention)
-    file = filePath.replace(extention, "")
-    logging.debug("File path without extention: " + file)
-
-    # Add _modified to file name
-    modified_file = file + "_modified" + extention
-    logging.debug("Modified file path: " + modified_file)
-
     try:
-        dataframe.to_csv(modified_file, sep=filedelimiter, index=False)
+        dataframe.to_csv(filePath, sep=filedelimiter, index=False)
         logging.info(f"SUCCESS: export_file({filePath})")
 
     except Exception as e:
         logging.critical(f"Error occurred: {e}")
         logging.critical(f"FAIL: export_file({filePath})")
-  
-    return modified_file
+
 
 
 # Export txt file
@@ -99,6 +96,33 @@ def export_txt(input_csv, output_txt):
         logging.critical(f"Error occurred: {e}")
         logging.critical(f"FAIL: export_txt({outputTxtName})")
 
+
+
+
+# # # Original functions:
+# Download file from SFTP
+def download_file(host_url, host_username, file_path, key_path, temp_path):
+    logging.info("Downloading file from TraCorp SFTP...")
+    logging.debug("SFTP URL: " + host_url)
+    logging.debug("SFTP Username: " + host_username)
+    logging.debug("SFTP File Path: " + file_path)
+    logging.debug("SFTP Key Path: " + key_path)
+
+    try:
+        cnopts = pysftp.CnOpts()
+        cnopts.hostkeys = None
+        with pysftp.Connection(host=host_url, username=host_username, private_key=key_path, cnopts=cnopts) as sftp:
+            sftp.get(file_path)
+            sftp.close()
+    except Exception as e:
+        logging.critical("Error downloading file from SFTP")
+        logging.critical(e)
+    else:
+        file_name = os.path.basename(file_path)
+        file = os.path.join(temp_path, file_name)
+        logging.info("File downloaded successfully.")
+        logging.debug("File path: " + file)
+        return file
 
 
 # Upload file to SFTP
