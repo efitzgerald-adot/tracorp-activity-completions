@@ -9,7 +9,7 @@ import argparse
 import configparser
 
 # Custom modules
-import variables
+from variables import *
 from functions_sql import *
 from functions_in_out import *
 from functions_parse import *
@@ -24,8 +24,8 @@ def parse_args():
     parser.add_argument("-d", "--debug", help="Debug mode", action="store_true")
     parser.add_argument("-v", "--verbose", help="Enable verbose console", action="store_true")
     args = parser.parse_args()
-
     return args
+
 
 
 # Setup logging
@@ -75,141 +75,258 @@ def read_config(configFilePath):
         logging.critical("Error reading configuration file: " + str(e))
 
 
+
+
+
+
+def download_file(host_url, host_username, file_path, key_path, temp_path):
+    logging.info("Downloading file from TraCorp SFTP...")
+    logging.debug("SFTP URL: " + host_url)
+    logging.debug("SFTP Username: " + host_username)
+    logging.debug("SFTP File Path: " + file_path)
+    logging.debug("SFTP Key Path: " + key_path)
+
+    try:
+        cnopts = pysftp.CnOpts()
+        cnopts.hostkeys = None
+        with pysftp.Connection(host=host_url, username=host_username, private_key=key_path, cnopts=cnopts) as sftp:
+            sftp.get(file_path)
+            sftp.close()
+    except Exception as e:
+        logging.critical("Error downloading file from SFTP")
+        logging.critical(e)
+    else:
+        file_name = os.path.basename(file_path)
+        file = os.path.join(temp_path, file_name)
+        logging.info("File downloaded successfully.")
+        logging.debug("File path: " + file)
+        return file
+
+
+
+
+
+
+# Upload file to SFTP
+def upload_file(host_url, host_username, file_path, key_path, file):
+    logging.info("Uploading file to SumTotal SFTP...")
+    logging.debug("SFTP URL: " + host_url)
+    logging.debug("SFTP Username: " + host_username)
+    logging.debug("SFTP File Path: " + file_path)
+    logging.debug("SFTP Key Path: " + key_path)
+    logging.debug("File path: " + file)
+
+    try:
+        cnopts = pysftp.CnOpts()
+        cnopts.hostkeys = None
+        with pysftp.Connection(host=host_url, username=host_username, private_key=key_path, cnopts=cnopts) as sftp:
+            sftp.chdir(os.path.dirname(file_path))
+            sftp.put(file)
+            sftp.close()
+    except Exception as e:
+        logging.critical("Error uploading file to SFTP")
+        logging.critical(e)
+    
+    else:
+        logging.info("File uploaded successfully.")
+
+
+
+# Email Log and Files
+def email_log_and_files(email_from, email_to, email_server, email_port, log_file, tracorp_file, sumtotal_file, modified_file):
+    # Email log file
+    logging.info("Emailing log and files...")
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = email_from
+        msg['To'] = email_to
+        msg['Subject'] = "SumTotalLMS_TraCorp Transform and Upload Log"
+        email_body = "Please see attached log file and files for SumTotalLMS_TraCorp Transform and Upload."
+        
+
+        # Attach log file
+        # Test if log file exists
+        if os.path.exists(log_file): 
+            attachment = open(log_file, "rb")
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload((attachment).read())
+            attachment.close()
+            part.add_header(
+                'Content-Disposition', "attachment; filename= %s" % log_file)
+            msg.attach(part)
+        else: 
+            email_body = email_body + "\n\nLog file not found."
+
+        # Attach tracorp file
+        # Test if tracorp file exists
+        if os.path.exists(tracorp_file):
+            attachment = open(tracorp_file, "rb")
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload((attachment).read())
+            attachment.close()
+            part.add_header('Content-Disposition',
+                            "attachment; filename= %s" % tracorp_file)
+            msg.attach(part)
+        else:
+            email_body = email_body + "\n\nTraCorp file not found."
+
+        # Attach sumtotal file
+        # Test if sumtotal file exists
+        if os.path.exists(sumtotal_file):
+            attachment = open(sumtotal_file, "rb")
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload((attachment).read())
+            attachment.close()
+            part.add_header('Content-Disposition',
+                            "attachment; filename= %s" % sumtotal_file)
+            msg.attach(part)
+        else:
+            email_body = email_body + "\n\nSumTotal file not found."
+
+        # Attach modified file
+        # Test if modified file exists
+        if os.path.exists(modified_file):
+            attachment = open(modified_file, "rb")
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload((attachment).read())
+            attachment.close()
+            part.add_header('Content-Disposition',
+                            "attachment; filename= %s" % modified_file)
+            msg.attach(part)
+        else:
+            email_body = email_body + "\n\nModified file not found."
+
+        # Attach email body
+        msg.attach(MIMEText(email_body, 'plain'))
+
+        # Send email
+        server = smtplib.SMTP(email_server, email_port)
+        server.starttls()
+        text = msg.as_string()
+        server.sendmail(email_from, email_to, text)
+        server.quit()
+    except Exception as e:
+        logging.critical("Error emailing log and files")
+        logging.critical(e)
+        
+    else:
+        logging.info("Log and files emailed successfully")
+
+
+
+# Archive Files
+def archive_files(tracorp_file, sumtotal_file, modified_file):
+    logging.info("Archiving files...")
+    # Setup File Archive Paths
+    archive_root = os.path.join(args.path, 'archive')
+    archive_date = datetime.now().strftime("%Y%m%d%H%M")
+    archive_path = os.path.join(archive_root, archive_date)
+    logging.debug("Archive path: " + archive_path)
+
+    # Create Archive Root Directory if it doesn't exist
+    if not os.path.exists(archive_root):
+        logging.debug("Archive root directory does not exist. Creating...")
+        os.makedirs(archive_root)
+
+    # Create archive directory if it doesn't exist
+    if not os.path.exists(archive_path):
+        logging.debug("Archive directory does not exist. Creating...")
+        os.makedirs(archive_path)
+
+    # New File Paths
+    tracorp_archive = os.path.join(
+        archive_path, os.path.basename(tracorp_file))
+    sumtotal_archive = os.path.join(
+        archive_path, os.path.basename(sumtotal_file))
+    modified_archive = os.path.join(
+        archive_path, os.path.basename(modified_file))
+
+    logging.debug("TraCorp archive path: " + tracorp_archive)
+    logging.debug("SumTotal archive path: " + sumtotal_archive)
+    logging.debug("Modified archive path: " + modified_archive)
+
+    # Copy files to archive directory
+    logging.debug("Copying files to archive directory...")
+
+    try:
+        logging.debug("Copying " + tracorp_file + " to " + tracorp_archive)
+        shutil.copy2(tracorp_file, tracorp_archive)
+    except Exception as e:
+        logging.critical("Error copying " + tracorp_file + " to " + tracorp_archive)
+        logging.critical(e)
+    else:
+        logging.debug("TraCorp file copied successfully")
+    try:
+        logging.debug("Copying " + sumtotal_file + " to " + sumtotal_archive)
+        shutil.copy2(sumtotal_file, sumtotal_archive)
+    except Exception as e:
+        logging.critical("Error copying " + sumtotal_file + " to " + sumtotal_archive)
+        logging.critical(e)
+    else:
+        logging.debug("SumTotal file copied successfully")
+    try:
+        logging.debug("Copying " + modified_file + " to " + modified_archive)
+        shutil.copy2(modified_file, modified_archive)
+    except Exception as e:
+        logging.critical("Error copying " + modified_file + " to " + modified_archive)
+        logging.critical(e)
+    else:
+        logging.debug("Modified file copied successfully")
+
+
+
+
+
+
 # Main
-def main(log_file):
+def main(log_file, config):
 
-    # # # Classes
-    class sql_server:
-        def __init__(self, driver, server, database, user, encrypt, auth):
-            self.driver = driver
-            self.server = server
-            self.database = database
-            self.user = user
-            self.encrypt = encrypt
-            self.auth = auth
-
-    class sql_tables:
-        def __init__(self, name, database, path):
-            self.name = name
-            self.database = database
-            self.path = path
-
-    class raw_file:
-        def __init__(self, path, name, csv_true, nickname, delimiter, fileType):
-            self.path = path
-            self.name = name
-            self.csv_true = csv_true
-            self.nickname = nickname
-            self.delimiter = delimiter
-            self.fileType = fileType
-
-    class sftp_server:
-        def __init__(self, url, username, file_path, key_path):
-            self.url = url
-            self.username = username
-            self.file_path = file_path
-            self.key_path = key_path
-
-    class smtp_server:
-        def __init__(self, smtpserver, port, email_from, email_to):
-            self.smtpserver = smtpserver
-            self.port = port
-            self.email_from = email_from
-            self.email_to = email_to
-
-
-    # # # Instances
+    # # Class Instances
     # SQL Servers
-    server_sql11worke = sql_server(driver=config['sql_server_sql11']['driver'],
-                                    server=config['sql_server_sql11']['server'],
-                                    database=config['sql_server_sql11']['database'],
-                                    user=config['sql_server_sql11']['user'],
-                                    encrypt=config['sql_server_sql11']['encrypt'],
-                                    auth=config['sql_server_sql11']['auth'])
+    servers = server_instance(config)
+    for index, server in enumerate(servers, start=1):
+        server_sql11worke = server_instance(config)[0]
+        server_aidwsql = server_instance(config)[1]
 
-    server_aidwsql = sql_server(driver=config['sql_server_aidwsqld98001']['driver'],
-                                server=config['sql_server_aidwsqld98001']['server'],
-                                database=config['sql_server_aidwsqld98001']['database'],
-                                user=config['sql_server_aidwsqld98001']['user'],
-                                encrypt=config['sql_server_aidwsqld98001']['encrypt'],
-                                auth=config['sql_server_aidwsqld98001']['auth'])
 
     # SQL Tables
-    table_vw_emp_roster = sql_tables(name=config['sql_table_VW_EmployeeRoster']['name'],
-                                    database=config['sql_table_VW_EmployeeRoster']['database'],
-                                    path=config['sql_table_VW_EmployeeRoster']['path'])
-
-    table_tmp_xlsx= sql_tables(name=config['sql_table_tmp_xlsx']['name'],
-                                database=config['sql_table_tmp_xlsx']['database'],
-                                path=config['sql_table_tmp_xlsx']['path'])
-
-    table_tmp_tracorp = sql_tables(name=config['sql_table_tmp_tracorp']['name'],
-                                    database=config['sql_table_tmp_tracorp']['database'],
-                                    path=config['sql_table_tmp_tracorp']['path'])
-
-    # SFTP Servers
-    sftp_in_tracorp = sftp_server(url=config['SFTPSettingsTC']['sftptcurl'],
-                                    username=config['SFTPSettingsTC']['username'],
-                                    key_path=config['SFTPSettingsTC']['key'],
-                                    file_path=config['SFTPSettingsTC']['file'])
-
-    sftp_out_sumtotal = sftp_server(url=config['SFTPSettingsST']['sftptcurl'],
-                                    username=config['SFTPSettingsST']['username'],
-                                    key_path=config['SFTPSettingsST']['key'],
-                                    file_path=config['SFTPSettingsST']['file'])
-
-    # SMTP Server
-    smtp_server_settings = smtp_server(smtpserver=config['EmailSettings']['smtpserver'],
-                                        port=config['EmailSettings']['port'],
-                                        email_from=config['EmailSettings']['from'],
-                                        email_to=config['EmailSettings']['to'])
-
-    # Input Files
-    file_in_xlsx = raw_file(path=config['file_in_xlsx']['path'],
-                            name=config['file_in_xlsx']['name'],
-                            csv_true=config['file_in_xlsx']['IsCsv'],
-                            nickname=config['file_in_xlsx']['nickname'],
-                            delimiter=config['file_in_xlsx']['delimiter'],
-                            fileType=config['file_in_xlsx']['type'])
-
-    file_in_tracorp = raw_file(path=config['file_in_tracorp']['path'],
-                                name=config['file_in_tracorp']['name'],
-                                csv_true=config['file_in_tracorp']['IsCsv'],
-                                nickname=config['file_in_tracorp']['nickname'],
-                                delimiter=config['file_in_tracorp']['delimiter'],
-                                fileType=config['file_in_tracorp']['type'])
-
-    # Output Files
-    file_out_csv = raw_file(path=config['file_out_csv_main']['path'],
-                            name=config['file_out_csv_main']['name'],
-                            csv_true=config['file_out_csv_main']['IsCsv'],
-                            nickname=config['file_out_csv_main']['nickname'],
-                            delimiter=config['file_out_csv_main']['delimiter'],
-                            fileType=config['file_out_csv_main']['type'])
-
-    file_out_tmp = raw_file(path=config['file_out_csv_tmp']['path'],
-                            name=config['file_out_csv_tmp']['name'],
-                            csv_true=config['file_out_csv_tmp']['IsCsv'],
-                            nickname=config['file_out_csv_tmp']['nickname'],
-                            delimiter=config['file_out_csv_tmp']['delimiter'],
-                            fileType=config['file_out_csv_tmp']['type'])
-
-    file_out_txt = raw_file(path=config['file_out_txt']['path'],
-                            name=config['file_out_txt']['name'],
-                            csv_true=config['file_out_txt']['IsCsv'],
-                            nickname=config['file_out_txt']['nickname'],
-                            delimiter=config['file_out_txt']['delimiter'],
-                            fileType=config['file_out_txt']['type'])
+    tables = table_instance(config)
+    for index, table in enumerate(tables, start=1):
+        table_vw_emp_roster = table_instance(config)[0]
+        table_tmp_xlsx = table_instance(config)[1]
+        table_tmp_tracorp = table_instance(config)[2]
+        table_mastercompletions = table_instance(config)[3]
 
 
-    logging.debug("Email From: " + smtp_server_settings.email_from)
-    logging.debug("Email To: " + smtp_server_settings.email_to)
-    logging.debug("Email Server: " + smtp_server_settings.smtpserver)
-    logging.debug("Email Port: " + smtp_server_settings.port)
+    # In/out Files
+    in_out_files = io_file_instance(config)
+    for index, table in enumerate(in_out_files, start=1):
+        file_in_xlsx = io_file_instance(config)[0]
+        file_in_tracorp = io_file_instance(config)[1]
+        file_out_csv = io_file_instance(config)[2]
+        file_out_tmp = io_file_instance(config)[3]
+        file_out_txt = io_file_instance(config)[4]
+
+
+    # SFTP Settings
+    sftp_servers = sftp_instance(config)
+    for index, sftp_server in enumerate(sftp_servers, start=1):
+        sftp_tc = sftp_instance(config)[0]
+        sftp_st = sftp_instance(config)[1]
+
+
+    # SMTP Settings
+    smtp_servers = smtp_instance(config)
+    for index, smtp_server in enumerate(smtp_servers, start=1):
+        smtp_connect = smtp_instance(config)[0]
+
+
+
+
 
     temp_path = os.path.join(args.path, 'temp') 
     logging.debug("temp path: " + temp_path)
-
     # Create temp directory if it doesn't exist
     if not os.path.exists(temp_path):
         logging.debug("Temp directory does not exist. Creating...")
@@ -218,31 +335,19 @@ def main(log_file):
     # Change working directory to temp directory
     os.chdir(temp_path)
 
-    # Connect to SQL Servers
-    if(args.no_sql):
-        logging.info("Skipping SQL Server connection")
-    else:
-        logging.info("Connecting to SQL Server...")
-        try:
-            conn_sql11worke, cur_sql11worke = connect_sql_server(server_sql11worke, args)
-            conn_aidwsql, cur_aidwsql = connect_sql_server(server_aidwsql, args)
-        except Exception as e:
-            logging.critical("Error connecting to SQL Server")
-            logging.critical(e)
+
+
 
 
     # # # Functions
 
-    # Get files from SFTP (TraCorp)
-    tracorp_file = download_file(sftp_in_tracorp.url, sftp_in_tracorp.username, 
-                                sftp_in_tracorp.file_path, sftp_in_tracorp.key_path, temp_path)
-    xlsx_file = download_file(file_in_xlsx.url, file_in_xlsx.username, 
-                                file_in_xlsx.file_path, file_in_xlsx.key_path, temp_path)
-    
+    # Connect to SQL Servers
+    conn_sql11worke, cur_sql11worke = connect_sql_server(server_sql11worke)
+    conn_aidwsql, cur_aidwsql = connect_sql_server(server_aidwsql)
 
 
-    # Import Excel (all adoa completions report)
-    df_xlsx_report = import_files(xlsx_file)
+    # Get file from SFTP (TraCorp) - Excel (all adoa completions report)
+    df_xlsx_report = download_file(sftp_tc.sftpurl, sftp_tc.username, sftp_tc.file, sftp_tc.key, temp_path)
 
     # Parse XLSX Report (file_instance is for logging)
     df_xlsx_parsed = general_parse(df_xlsx_report, file_in_xlsx)
@@ -251,17 +356,23 @@ def main(log_file):
     insert_query(conn_aidwsql, df_xlsx_parsed, table_tmp_xlsx)
 
 
+    # Query compare with mastercompletions & remove duplicates to df
+    df_xlsx_unique = general_distinct_query(conn_aidwsql, table_tmp_xlsx, table_mastercompletions)
+
+    # Update mastercompletions with daily xlsx unique df
+    insert_query(conn_aidwsql, df_xlsx_unique, table_mastercompletions)
+
+
+
 
     # Import Tracorp
-    df_tracorp_file = import_files(tracorp_file)
+    df_tracorp_file = download_file(sftp_st.sftpurl, sftp_st.username, sftp_st.file, sftp_st.key, temp_path)
 
     # Parse Tracorp
     df_tracorp_parsed = general_parse(df_tracorp_file, file_in_tracorp)
 
     # Parse filter out inactive activities
-    df_tracorp_active_activities = dfs_merge(df_tracorp_parsed, variables.df_active_activities)
-
-
+    df_tracorp_active_activities = dfs_merge(df_tracorp_parsed, df_active_activities)
 
     # Query Insert Tracorp
     insert_query(conn_aidwsql, df_tracorp_active_activities, table_tmp_tracorp)
@@ -269,37 +380,43 @@ def main(log_file):
     # Query correct email
     correct_email(conn_sql11worke)
 
-    # Query to df remove duplicates with tmp_xlsx
-    df_tracorp_no_duplicates = remove_duplicates(conn_aidwsql)
+    # Query to df remove duplicates with mastercompletions
+    df_tracorp_no_duplicates = general_distinct_query(conn_aidwsql, table_tmp_tracorp, table_mastercompletions)
+
+
+
+    # Insert df_tracorp_no_duplicates into mastercompletions
+    insert_query(conn_aidwsql, df_tracorp_no_duplicates, table_mastercompletions)
+
 
     # Parse final df with required, static values
     df_tracorp_final = final_parse(df_tracorp_no_duplicates)
 
 
-
     # Export to main csv
-    modified_main_csv = export_csv(df_tracorp_final, file_out_csv)
+    export_csv(df_tracorp_final, file_out_csv)
 
     # Export to tmp csv
-    modified_pipe_csv = export_csv(df_tracorp_final, file_out_tmp)
+    export_csv(df_tracorp_final, file_out_tmp)
 
     # Export to txt
-    sumtotal_file = export_txt(modified_pipe_csv, file_out_txt)
+    export_txt(file_out_tmp, file_out_txt)
 
     # Upload file to SFTP (SumTotal)
-    upload_file(sftp_out_sumtotal.url, sftp_out_sumtotal.username,
-                sftp_out_sumtotal.file_path, sftp_out_sumtotal.key_path, sumtotal_file)
+    upload_file(sftp_st.sftpurl, sftp_st.username, sftp_st.file, sftp_st.key, export_txt)
+
 
     # Archive files
-    archive_files(tracorp_file, sumtotal_file, modified_main_csv)
+    archive_files(df_tracorp_file, export_txt, export_csv)
+
 
     # Send Email
-    email_log_and_files(smtp_server_settings.email_from, smtp_server_settings.email_to, 
-                        smtp_server_settings.smtpserver, smtp_server_settings.port,
-                        log_file, tracorp_file, sumtotal_file, modified_main_csv)
+    email_log_and_files(smtp_connect.addressFrom, smtp_connect.addressTo, smtp_connect.server, smtp_connect.port,
+                        log_file, df_tracorp_file, export_txt, export_csv)
 
 
     # Clear temp directory
+    # Delete all files in temp directory
     for filename in os.listdir(temp_path):
         file_path = os.path.join(temp_path, filename)
         try:
@@ -311,6 +428,8 @@ def main(log_file):
             logging.critical('Failed to delete %s. Reason: %s' % (file_path, e))
         else:
             logging.debug("Deleted " + file_path)  
+
+
 
 
 # Run main
@@ -331,7 +450,5 @@ if __name__ == "__main__":
     # Read configuration file
     config = read_config(args.config)
 
-
-
     # Run main
-    main(log_file)
+    main(log_file, config)

@@ -1,12 +1,12 @@
-# Ignore
-.vscode/*
-build/*
-*.spec
-*.ppk
+# Ignore InputFiles folder
+InputFiles/
+
+# Ignore OutputFiles folder
+OutputFiles/
+
+*.ps1
 logs/*
 archive/*
 temp/*
-config.testing
 
-# Allow
-!requirements.txt
+
