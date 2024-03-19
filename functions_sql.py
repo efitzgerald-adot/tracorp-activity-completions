@@ -119,30 +119,41 @@ def correct_email(conn):
     logging.info("Querying for correct email")
 
     try:
+        dfLength = str(len(dataframe.index))
+        logging.debug("Number of rows in DataFrame: " + dfLength)
         cursor = conn.cursor()
 
-        null_check_query = """
-        SELECT COUNT(*)
-        FROM [eric].[dbo].[tmp_Tracorp_Daily]
-        WHERE Email_adotmaster IS NULL
-        """
+        for index, row in dataframe.iterrows():
+            logging.debug("Index: " + str(index) + "/" + dfLength)
+            logging.debug("Row: " + str(row))
 
-        cursor.execute(null_check_query)
-        null_count = cursor.fetchone()[0]
+            user_id = row['EmpID']
 
-        if null_count > 0:
+            # Pad EIN with leading zeros
+            user_id = str(user_id).zfill(9)
 
-            query = """ 
-            UPDATE tc 
-            SET tc.Email_adotmaster = am.EmployeeEmailAddress
-            FROM [eric].[dbo].[tmp_Tracorp_Daily] AS tc
-            JOIN [adotmaster].[dbo].[VW_EmployeeRoster] AS am ON tc.EmpID = am.EIN;
+            query = f"""
+            SELECT {table_instance.key_email} AS Email
+            FROM {table_instance.path}
+            WHERE {table_instance.key_empId} = {user_id}
             """
 
             cursor.execute(query)
-            conn.commit()
-            logging.info("Emails updated in tmp_Tracorp_Daily")
 
+            email = cursor.fetchone()
+                
+
+            if email is None:
+                email = row['Email']
+                logging.debug("Email not returned in query for user: " + str(user_id))
+                logging.debug("Email: " + email)
+            else: 
+                logging.debug("Email returned in query for user:" + str(user_id))
+                logging.debug("Results: " + str(email))
+                email = str(email[0])
+                logging.debug("Email: " + email)
+            
+            dataframe.at[index, 'Email'] = email
 
         cursor.close()
         logging.info("SUCCESS: correct_email()\n")
@@ -152,6 +163,10 @@ def correct_email(conn):
         logging.critical("FAIL: correct_email()")
         logging.critical(f"Error occurred: {e}\n")
         conn.rollback()  # Roll back changes if an error occurs
+
+    return dataframe
+
+
 
 
 # General remove duplicates
@@ -184,7 +199,7 @@ def general_distinct_query(conn, table_left, table_right):
         query = f""" 
         SELECT 
             l.{tableLeft_activity},
-            l.{tableLeft_email} AS Email,
+            l.{tableLeft_email},
             l.EmpID,
             l.{tableLeft_date},
             l.Score

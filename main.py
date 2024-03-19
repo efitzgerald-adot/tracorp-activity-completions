@@ -374,11 +374,13 @@ def main(log_file, config):
     # Parse filter out inactive activities
     df_tracorp_active_activities = dfs_merge(df_tracorp_parsed, df_active_activities)
 
-    # Query Insert Tracorp
-    insert_query(conn_aidwsql, df_tracorp_active_activities, table_tmp_tracorp)
-
     # Query correct email
-    correct_email(conn_sql11worke)
+    df_correct_emails = correct_email(conn_sql11worke, df_tracorp_active_activities, table_vw_emp_roster)
+
+
+    # Query Insert Tracorp
+    insert_query(conn_aidwsql, df_correct_emails, table_tmp_tracorp)
+
 
     # Query to df remove duplicates with mastercompletions
     df_tracorp_no_duplicates = general_distinct_query(conn_aidwsql, table_tmp_tracorp, table_mastercompletions)

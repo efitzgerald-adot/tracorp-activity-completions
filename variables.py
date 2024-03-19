@@ -23,7 +23,7 @@ class sql_server:
         self.auth = auth
 
 class sql_tables:
-    def __init__(self, name, database, path, table_type, key_email, key_activity, key_date):
+    def __init__(self, name, database, path, table_type, key_email, key_activity, key_date, key_empId):
         self.name = name
         self.database = database
         self.path = path
@@ -31,6 +31,7 @@ class sql_tables:
         self.key_email = key_email
         self.key_activity = key_activity
         self.key_date = key_date
+        self.key_empId = key_empId
 
 class raw_file:
     def __init__(self, path, name, csv_true, nickname, delimiter, fileType):
@@ -88,7 +89,8 @@ def table_instance(config):
                                 table_type= table_config['table_type'],
                                 key_email= table_config['key_email'],
                                 key_activity= table_config['key_activity'],
-                                key_date= table_config['key_date'])
+                                key_date= table_config['key_date'],
+                                key_empId=table_config['key_empId'])
             tables.append(table)
     return tables
 

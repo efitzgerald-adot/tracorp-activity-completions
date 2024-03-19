@@ -69,7 +69,7 @@ def general_parse(dataframe, file_instance):
         if file_type == 'csv':
             # Filter for CompletionDate >= 6 months ago
             now = datetime.now()
-            cutoff_date = now - timedelta(days= 200)
+            cutoff_date = now - timedelta(days= 21)
             logging.info(f"Cutoff date = {cutoff_date}")
 
             df = df.loc[df['CompletionDate'] >= cutoff_date]
